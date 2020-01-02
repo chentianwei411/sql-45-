@@ -92,3 +92,89 @@ select * from Student where exists(select 1 from sc where sc.sid = Student.sid);
 
 -- 5.查询「李」姓老师的数量
 select count(Tname) from Teacher where Tname like '李%';
+
+-- 6.查询学过「张三」老师授课的同学的信息
+select Student.Sname from Teacher
+inner join Course on Teacher.tid = Course.tid and Teacher.tname = "张三"
+inner join SC on Course.cid = SC.cid
+inner join Student on SC.sid = Student.sid;
+
+-- 7.查询没有学全所有课程的同学的信息
+select Student.Sname from Student
+left join SC on SC.sid = Student.sid
+group by Student.Sname
+having count(sc.cid) < (select count(1) from Course);
+-- +--------+  解题思路：
+-- | Sname  |  1.主表是Student,通过它左连接SC表。把所有学生的成绩和学生信息连表。
+-- +--------+  2.按照每个学生分组，计算每个学生有多少门成绩。
+-- | 周梅   |   3. 筛选。使用子查询和having count()比较
+-- | 吴兰   |
+-- | 郑竹   |
+-- | 张三   |
+-- | 李四   |
+-- | 赵六   |
+-- | 孙七   |
+-- +--------+
+
+-- 8.查询至少有一门课与学号为" 01 "的同学所学相同的同学的信息
+select distinct Student.sname from Student
+left join SC on SC.sid = Student.sid
+where SC.cid in(select cid from SC where sid = '01');
+-- +--------+
+-- | sname  |
+-- +--------+
+-- | 赵雷   |
+-- | 钱电   |
+-- | 孙风   |
+-- | 李云   |
+-- | 周梅   |
+-- | 吴兰   |
+-- | 郑竹   |
+-- +--------+
+
+-- 9.查询和" 01 "号的同学学习的课程 完全相同的其他同学的信息
+-- 解题思路：
+-- 1.教程里面给了一篇文章谈到大数据下，尽量不要使用复杂的嵌套子查询。不利于运行效率。
+-- 2.基于这个事实，我的代码分成2条查询语句
+-- 3.第一条查询到'01'号同学学习的课程。这里有2个知识点：
+--   其中一个是教程里面已经提到：group_concat。
+--   另一个是user-defined variable。所以可以使用@grou_c储存我们刚刚查询到的数据。
+-- 4.第二条查询，
+--   把Student左关联SC,然后剔除"01"号同学的记录。
+--   然后分组，使用having条件语句，筛选出和"01"号同学的课程完全一样的学生。
+
+select sid, @group_c := group_concat(cid) from sc group by sid having sid = "01";
+
+select Student.Sname from student
+left join SC on SC.sid = Student.sid and SC.sid <> "01"
+group by Student.Sname
+having group_concat(sc.cid) = @group_c;
+-- +--------+
+-- | Sname  |
+-- +--------+
+-- | 孙风   |
+-- | 李云   |
+-- | 钱电   |
+-- +--------+
+
+-- 10.查询没学过"张三"老师讲授的任一门课程的学生姓名
+select Student.sid, Student.Sname from Student where sid not in (
+  -- 先查询学过张三课程的学生的sid。
+  select sid from SC
+  inner join Course on Course.cid = SC.cid
+  inner join Teacher on Teacher.tid = Course.tid and Teacher.tname = "张三"
+);
+-- +------+--------+
+-- | sid  | Sname  |
+-- +------+--------+
+-- | 06   | 吴兰   |
+-- | 09   | 张三   |
+-- | 10   | 李四   |
+-- | 11   | 李四   |
+-- | 12   | 赵六   |
+-- | 13   | 孙七   |
+-- +------+--------+
+
+-- 11.查询两门及其以上不及格课程的同学的学号，姓名及其平均成绩
+select Student.sid, Student.sname, avg(score) from Student
+inner join SC on SC.sid = Student.sid
