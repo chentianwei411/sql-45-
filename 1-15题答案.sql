@@ -178,3 +178,43 @@ select Student.sid, Student.Sname from Student where sid not in (
 -- 11.查询两门及其以上不及格课程的同学的学号，姓名及其平均成绩
 select Student.sid, Student.sname, avg(score) from Student
 inner join SC on SC.sid = Student.sid
+
+-- 12.检索" 01 "课程分数小于 60，按分数降序排列的学生信息
+select Student.*, SC.score from SC
+inner join Student on Student.sid = SC.sid
+where score < 60 and cid = '01' order by score desc;
+
+-- 13.按平均成绩从高到低显示所有学生的所有课程的成绩以及平均成绩
+-- select sid, avg(score) as avg_score from SC group by sid order by avg_score desc;
+select Student.*, sc_1.score as "01", sc_2.score as "02", sc_3.score as "03",
+cast((ifnull(sc_1.score, 0)+ifnull(sc_2.score, 0)+ ifnull(sc_3.score, 0))/(if(sc_1.score, 1, 0)+if(sc_2.score, 1, 0)+if(sc_3.score, 1, 0)) as decimal(5,2))as avg_score
+from Student
+left join SC as sc_1 on sc_1.sid = Student.sid and sc_1.cid = "01"
+left join SC as sc_2 on sc_2.sid = Student.sid and sc_2.cid = "02"
+left join SC as sc_3 on sc_3.sid = Student.sid and sc_3.cid = "03"
+order by avg_score desc;
+-- 这样写的缺陷，如果有10门课，那就要写10行left join了。优点就是简明清晰，一看就懂。
+
+-- 14.查询各科成绩最高分、最低分和平均分：
+-- 以如下形式显示：课程 ID，课程 name，最高分，最低分，平均分，及格率，中等率，优良率，优秀率
+-- 及格为>=60，中等为：70-80，优良为：80-90，优秀为：>=90
+-- 要求输出课程号和选修人数，查询结果按人数降序排列，若人数相同，按课程号升序排列
+select SC.cid, Course.cname, max(SC.score), min(SC.score), avg(SC.score), count(sid),
+sum(if(score>=60,1,0))/count(1) as 'pass 60',
+sum(if(score>=70 and score < 80, 1, 0))/count(1) as "middle 70-80",
+sum(if(score>80 and score<90,1,0))/count(1) as "good 80-90",
+sum(if(score>=90,1,0))/count(1) as "best >=90"
+from SC
+inner join Course on SC.cid = Course.cid
+group by SC.cid, Course.cname
+order by count(sid) desc, cid asc;
+-- +------+--------+---------------+---------------+---------------+------------+---------+--------------+------------+-----------+
+-- | cid  | cname  | max(SC.score) | min(SC.score) | avg(SC.score) | count(sid) | pass 60 | middle 70-80 | good 80-90 | best >=90 |
+-- +------+--------+---------------+---------------+---------------+------------+---------+--------------+------------+-----------+
+-- | 01   | 语文   |          80.0 |          31.0 |      64.50000 |          6 |  0.6667 |       0.3333 |     0.0000 |    0.0000 |
+-- | 02   | 数学   |          90.0 |          30.0 |      72.66667 |          6 |  0.8333 |       0.0000 |     0.3333 |    0.1667 |
+-- | 03   | 英语   |          99.0 |          20.0 |      68.50000 |          6 |  0.6667 |       0.0000 |     0.0000 |    0.3333 |
+-- +------+--------+---------------+---------------+---------------+------------+---------+--------------+------------+-----------+
+
+-- 15.按各科成绩进行排序，并显示排名， Score 重复时保留名次空缺
+-- 15.1 按各科成绩进行排序，并显示排名， Score 重复时合并名次
