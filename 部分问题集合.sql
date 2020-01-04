@@ -47,3 +47,38 @@ select *
 from sc
 where  (select count(1) from sc as a where sc.CId =a.CId and  sc.score <a.score )<3
 ORDER BY CId asc,sc.score desc
+
+-- 35、查询不同课程成绩相同的学生的学生编号、课程编号、学生成绩
+-- select t1.sid, t1.cid, t1.score from sc as t1
+-- inner join sc as t2 on t1.sid = t2.sid
+-- and t1.cid <> t2.cid and t1.score = t2.score
+-- group by t1.sid, t1.cid,t1.score
+
+-- 请老师讲解一下工作中是否常用exists这个关键字？？？
+select *
+from sc as t1
+where exists(select * from sc as t2
+        where t1.SId=t2.SId
+        and t1.CId!=t2.CId
+        and t1.score =t2.score )
+
+-- 36.查询每门功成绩最好的前两名（和第18题一样）
+
+-- 39、查询选修了全部课程的学生信息 (请老师讲解一下使用查询的效率问题，大石兄博客写的是一个复合语句)
+select @count :=count(1) from Course;
+select * from student
+where sid in (select sid from SC group by sid having count(cid) = @count);
+-- +------+--------+---------------------+------+
+-- | SId  | Sname  | Sage                | Ssex |
+-- +------+--------+---------------------+------+
+-- | 01   | 赵雷   | 1990-01-01 00:00:00 | 男   |
+-- | 02   | 钱电   | 1990-12-21 00:00:00 | 男   |
+-- | 03   | 孙风   | 1990-05-20 00:00:00 | 男   |
+-- | 04   | 李云   | 1990-08-06 00:00:00 | 男   |
+-- +------+--------+---------------------+------+
+-- 👇是大石兄博客的答案：（我用show profiles比较，发现耗时时间较多）
+-- select
+-- *
+-- from student a
+-- where (select count(1) from sc b where a.sid=b.sid)
+--     =(select count(1) from course)
