@@ -185,7 +185,6 @@ inner join Student on Student.sid = SC.sid
 where score < 60 and cid = '01' order by score desc;
 
 -- 13.按平均成绩从高到低显示所有学生的所有课程的成绩以及平均成绩
--- select sid, avg(score) as avg_score from SC group by sid order by avg_score desc;
 select Student.*, sc_1.score as "01", sc_2.score as "02", sc_3.score as "03",
 cast((ifnull(sc_1.score, 0)+ifnull(sc_2.score, 0)+ ifnull(sc_3.score, 0))/(if(sc_1.score, 1, 0)+if(sc_2.score, 1, 0)+if(sc_3.score, 1, 0)) as decimal(5,2))as avg_score
 from Student
@@ -193,7 +192,14 @@ left join SC as sc_1 on sc_1.sid = Student.sid and sc_1.cid = "01"
 left join SC as sc_2 on sc_2.sid = Student.sid and sc_2.cid = "02"
 left join SC as sc_3 on sc_3.sid = Student.sid and sc_3.cid = "03"
 order by avg_score desc;
--- 这样写的缺陷，如果有10门课，那就要写10行left join了。优点就是简明清晰，一看就懂。
+-- 这样写的缺陷，如果有10门课，那就要写10行left join了，而且降低效率。改用这个方法：
+select t1.*, avg_score from SC t1
+left join (
+  select sid, cast(avg(score) as decimal(5,2)) as avg_score from SC group by sid ) t2
+on t1.sid = t2.sid
+order by t1.score desc;
+
+
 
 -- 14.查询各科成绩最高分、最低分和平均分：
 -- 以如下形式显示：课程 ID，课程 name，最高分，最低分，平均分，及格率，中等率，优良率，优秀率
@@ -217,4 +223,53 @@ order by count(sid) desc, cid asc;
 -- +------+--------+---------------+---------------+---------------+------------+---------+--------------+------------+-----------+
 
 -- 15.按各科成绩进行排序，并显示排名， Score 重复时保留名次空缺
+select *, rank() over(partition by cid order by score desc) as '排名'
+from SC
+-- +------+------+-------+--------+
+-- | SId  | CId  | score | 排名   |
+-- +------+------+-------+--------+
+-- | 01   | 01   |  80.0 |      1 |
+-- | 03   | 01   |  80.0 |      1 |
+-- | 05   | 01   |  76.0 |      3 |
+-- | 02   | 01   |  70.0 |      4 |
+-- | 04   | 01   |  50.0 |      5 |
+-- | 06   | 01   |  31.0 |      6 |
+-- | 01   | 02   |  90.0 |      1 |
+-- | 07   | 02   |  89.0 |      2 |
+-- | 05   | 02   |  87.0 |      3 |
+-- | 03   | 02   |  80.0 |      4 |
+-- | 02   | 02   |  60.0 |      5 |
+-- | 04   | 02   |  30.0 |      6 |
+-- | 01   | 03   |  99.0 |      1 |
+-- | 07   | 03   |  98.0 |      2 |
+-- | 02   | 03   |  80.0 |      3 |
+-- | 03   | 03   |  80.0 |      3 |
+-- | 06   | 03   |  34.0 |      5 |
+-- | 04   | 03   |  20.0 |      6 |
+-- +------+------+-------+--------+
+
 -- 15.1 按各科成绩进行排序，并显示排名， Score 重复时合并名次
+select *, dense_rank() over(partition by cid order by score desc) as '排名'
+from SC
+-- +------+------+-------+--------+
+-- | SId  | CId  | score | 排名   |
+-- +------+------+-------+--------+
+-- | 01   | 01   |  80.0 |      1 |
+-- | 03   | 01   |  80.0 |      1 |
+-- | 05   | 01   |  76.0 |      2 |
+-- | 02   | 01   |  70.0 |      3 |
+-- | 04   | 01   |  50.0 |      4 |
+-- | 06   | 01   |  31.0 |      5 |
+-- | 01   | 02   |  90.0 |      1 |
+-- | 07   | 02   |  89.0 |      2 |
+-- | 05   | 02   |  87.0 |      3 |
+-- | 03   | 02   |  80.0 |      4 |
+-- | 02   | 02   |  60.0 |      5 |
+-- | 04   | 02   |  30.0 |      6 |
+-- | 01   | 03   |  99.0 |      1 |
+-- | 07   | 03   |  98.0 |      2 |
+-- | 02   | 03   |  80.0 |      3 |
+-- | 03   | 03   |  80.0 |      3 |
+-- | 06   | 03   |  34.0 |      4 |
+-- | 04   | 03   |  20.0 |      5 |
+-- +------+------+-------+--------+

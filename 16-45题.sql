@@ -1,17 +1,12 @@
 -- 16.查询学生的总成绩，并进行排名，总分重复时保留名次空缺
-select sid, sum(score) from SC
-group by sid
-order by sum(score) desc
-
--- 参考（这个答案，有些丑陋，因为多了一列@sco := scos,这列只是计算用途。）
--- 问下老师，有没有更好的写法？
+-- 问下老师，有没有更好的写法？可以用pandas和窗口函数
+set @sco:=null,@rank=0;
 select
 	s.*,
 	case when @sco=scos then '' else @rank:=@rank+1 end as rn ,
 	@sco:=scos
 from
-	(select sid,sum(score) as scos from sc group by sid order by scos desc) s,
-	(select @rank:=0,@sco:=null) t
+	(select sid,sum(score) as scos from sc group by sid order by scos desc) s
   -- +------+-------+------+------------+
   -- | sid  | scos  | rn   | @sco:=scos |
   -- +------+-------+------+------------+
@@ -23,9 +18,25 @@ from
   -- | 04   | 100.0 | 6    |      100.0 |
   -- | 06   |  65.0 | 7    |       65.0 |
   -- +------+-------+------+------------+
-
--- 16.1 查询学生的总成绩，并进行排名，总分重复时不保留名次空缺
--- 麻烦老师也对比着讲一下
+-- 使用窗口函数rank(),保留空缺名次，本例看不出来，可参考第15题。
+select *, rank() over (order by total desc) as rank1
+from (
+	select sc.sid, sum(sc.score) as total from sc group by sc.sid) q;
+	-- +------+-------+-------+
+	-- | sid  | total | rank1 |
+	-- +------+-------+-------+
+	-- | 01   | 269.0 |     1 |
+	-- | 03   | 240.0 |     2 |
+	-- | 02   | 210.0 |     3 |
+	-- | 07   | 187.0 |     4 |
+	-- | 05   | 163.0 |     5 |
+	-- | 04   | 100.0 |     6 |
+	-- | 06   |  65.0 |     7 |
+	-- +------+-------+-------+
+-- 16.1 查询学生的总成绩，并进行排名，总分重复时不保留名次空缺 （使用工厂函数）
+select *, dense_rank() over (order by total desc) as rank1
+from (
+	select sc.sid, sum(sc.score) as total from sc group by sc.sid) q;
 
 -- 17.统计各科成绩各分数段人数：课程编号，课程名称，[100-85]，[85-70]，[70-60]，[60-0] 及所占百分比
 select SC.cid, Course.cname,
@@ -43,12 +54,26 @@ group by cid, cname;
 -- | 03   | 英语   | 0.3333 | 0.3333 | 0.0000 | 0.3333 |
 -- +------+--------+--------+--------+--------+--------+
 
--- 18.查询各科成绩前三名的记录
--- 不懂 "< 3"
--- select *
--- from sc
--- where  (select count(1) from sc as a where sc.CId =a.CId and  sc.score <a.score )<3
--- ORDER BY CId asc,sc.score desc
+-- 18.查询各科成绩前三名的记录 （用窗口函数）
+select * from (
+	select * , dense_rank() over (partition by cid order by score desc) as rank1 from sc) t
+where rank1 <= 3;
+-- 解释：over()内部不能用limit子句，所以再用select子句包裹一下，然后加个where子句。
+-- +------+------+-------+-------+
+-- | SId  | CId  | score | rank1 |
+-- +------+------+-------+-------+
+-- | 01   | 01   |  80.0 |     1 |
+-- | 03   | 01   |  80.0 |     1 |
+-- | 05   | 01   |  76.0 |     2 |
+-- | 02   | 01   |  70.0 |     3 |
+-- | 01   | 02   |  90.0 |     1 |
+-- | 07   | 02   |  89.0 |     2 |
+-- | 05   | 02   |  87.0 |     3 |
+-- | 01   | 03   |  99.0 |     1 |
+-- | 07   | 03   |  98.0 |     2 |
+-- | 02   | 03   |  80.0 |     3 |
+-- | 03   | 03   |  80.0 |     3 |
+-- +------+------+-------+-------+
 
 -- 19.查询每门课程被选修的学生数
 select cid, count(1) from SC
@@ -177,20 +202,36 @@ select t1.sid, t1.cid, t1.score from sc as t1
 inner join sc as t2 on t1.sid = t2.sid
 and t1.cid <> t2.cid and t1.score = t2.score
 group by t1.sid, t1.cid,t1.score
--- 或者使用
+-- 或者使用(但内存消耗比join大)
 select *
 from sc as t1
 where exists(select * from sc as t2
         where t1.SId=t2.SId
         and t1.CId!=t2.CId
         and t1.score =t2.score )
+-- +------+------+-------+
+-- | SId  | CId  | score |
+-- +------+------+-------+
+-- | 03   | 02   |  80.0 |
+-- | 03   | 03   |  80.0 |
+-- | 03   | 01   |  80.0 |
+-- +------+------+-------+
 
--- 36.查询每门功成绩最好的前两名 （等同于18题）
-select *
-from sc as t1
-where (select count(*) from sc as t2
-    where t1.CId=t2.CId and t2.score >t1.score)<2
-ORDER BY t1.CId
+-- 36.查询每门功成绩最好的前两名
+select sid, cid,score from (
+	select *, rank() over (partition by cid order by score desc) as rank1 from sc) t
+where rank1 <=2;
+-- +------+------+-------+
+-- | sid  | cid  | score |
+-- +------+------+-------+
+-- | 01   | 01   |  80.0 |
+-- | 03   | 01   |  80.0 |
+-- | 01   | 02   |  90.0 |
+-- | 07   | 02   |  89.0 |
+-- | 01   | 03   |  99.0 |
+-- | 07   | 03   |  98.0 |
+-- +------+------+-------+
+-- 6 rows in set (0.01 sec)
 
 -- 37.统计每门课程的学生选修人数（超过 5 人的课程才统计）
 select cid, count(score) from SC
@@ -212,6 +253,7 @@ where sid in (select sid from SC group by sid having count(cid) = @count);
 -- | 03   | 孙风   | 1990-05-20 00:00:00 | 男   |
 -- | 04   | 李云   | 1990-08-06 00:00:00 | 男   |
 -- +------+--------+---------------------+------+
+-- 回答关于提高效率：https://www.jianshu.com/p/cf3fe3990d66 参考这篇提高效率的文章。
 
 -- 40.查询各学生的年龄，只按年份来算
 select *, (year(now())-year(sage)) as age  from Student
@@ -223,7 +265,14 @@ from Student
 -- 也可以使用substring()函数
 
 -- 42.查询本周过生日的学生
--- 大石兄的博客的答案，没有考虑闰年的问题，
+-- 大石兄的博客的答案，没有考虑闰年的问题
+-- 回答：考虑闰年的话，需要使用pandas做。
+select
+*,
+substr(YEARWEEK(student.Sage),5,2) as birth_week
+substr(YEARWEEK(CURDATE()),5,2) as now_week
+from student
+where substr(YEARWEEK(student.Sage),5,2)=substr(YEARWEEK(CURDATE()),5,2);
 
 -- 44.查询本月过生日的学生
 select * , month(sage), month(now()) from Student where month(sage)=month(now());
