@@ -82,3 +82,13 @@ where sid in (select sid from SC group by sid having count(cid) = @count);
 -- from student a
 -- where (select count(1) from sc b where a.sid=b.sid)
 --     =(select count(1) from course)
+
+
+-- 42.查询本周过生日的学生
+-- 大石兄的博客的答案，没有考虑闰年的问题, 麻烦老师讲解。
+select
+*,
+substr(YEARWEEK(student.Sage),5,2) as birth_week
+substr(YEARWEEK(CURDATE()),5,2) as now_week
+from student
+where substr(YEARWEEK(student.Sage),5,2)=substr(YEARWEEK(CURDATE()),5,2);

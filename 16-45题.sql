@@ -215,3 +215,20 @@ where sid in (select sid from SC group by sid having count(cid) = @count);
 
 -- 40.查询各学生的年龄，只按年份来算
 select *, (year(now())-year(sage)) as age  from Student
+
+-- 41.按照出生日期来算，当前月日 < 出生年月的月日则，年龄减一
+select *,
+if(date_format(now(), "%m-%d")< date_format(sage, '%m-%d'), year(now())-year(sage) -1, year(now())-year(sage)) as age
+from Student
+-- 也可以使用substring()函数
+
+-- 42.查询本周过生日的学生
+-- 大石兄的博客的答案，没有考虑闰年的问题，
+
+-- 44.查询本月过生日的学生
+select * , month(sage), month(now()) from Student where month(sage)=month(now());
+-- 或者使用 extract(unit from date)
+select * from Student where extract(month from student.sage) = extract(month from current_date());
+
+-- 45.查询下月过生日的学生
+select * from Student where  extract(month from student.sage) = extract(month from now()) + 1;
