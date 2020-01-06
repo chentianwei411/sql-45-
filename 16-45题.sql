@@ -97,6 +97,7 @@ select ssex, count(1) from Student group by ssex;
 
 -- 22.查询名字中含有「风」字的学生信息
 select * from Student where sname like "%风%";
+-- 如果sname 是索引字段时,'%风%'' 这样的写法不用到索引,'风%'这样的写法才会用到，真的工作中需要再考虑下了
 
 -- 23.查询同名同性学生名单，并统计同名人数
 --1 统计同名同性的学生名单
@@ -125,6 +126,8 @@ inner join t on t.sname = a.sname and t.ssex = a.ssex
 
 -- 24.查询 1990 年出生的学生名单
 select * from Student where year(sage) = 1990;
+-- 优化，任何对列的操作都导致全表扫描，索引会失效
+select * from Student where sage like '1990%'
 
 -- 25.查询每门课程的平均成绩，结果按平均成绩降序排列，平均成绩相同时，按课程编号升序排列
 -- +------+-----------+
@@ -148,15 +151,16 @@ on s.sid = Student.sid;
 -- +------+--------+-----------+
 
 -- 27、查询课程名称为「数学」，且分数低于 60 的学生姓名和分数
+-- 优化，使用join,where判断。
 select Student.sname, SC.score from SC
 inner join Student on Student.sid = SC.sid
-and SC.score < 60
-and cid = (select cid from course where cname = "数学");
--- +--------+------+-------+
--- | sname  | cid  | score |
--- +--------+------+-------+
--- | 李云   | 02   |  30.0 |
--- +--------+------+-------+
+inner join Course on Course.cid = SC.cid
+where Course.cname = "数学" and SC.score < 60;
+-- +--------+-------+
+-- | sname  | score |
+-- +--------+-------+
+-- | 李云   |  30.0 |
+-- +--------+-------+
 
 -- 28.查询所有学生的课程及分数情况（存在学生没成绩，没选课的情况)
 select Student.*, Sc.cid, SC.score from Student
@@ -169,6 +173,8 @@ inner join Course on Course.cid = SC.cid
 
 -- 30.查询不及格的课程(这道题没啥意义)
 select * from SC where score < 60
+-- 优化：以后不要有select * 的出现，一般公司中字段会50+或者更多，需要什么字段就select什么
+select sid, cid, score from sc where score < 60
 
 -- 31.查询课程编号为 01 且课程成绩在 80 分以上的学生的学号和姓名
 select Student.sid, Student.sname from Student
@@ -181,21 +187,21 @@ select cid, count(1) from SC group by cid;
 -- 33、假设成绩不重复，查询选修「张三」老师所授课程的学生中，成绩最高的学生信息及其成绩
 -- 34.假设成绩有重复的情况下，查询选修「张三」老师所授课程的学生中，成绩最高的学生信息及其成绩
 -- 最高成绩可能有多个:
-select @max :=max(score) from SC
-where cid in (
-  select Course.cid from Course
-  inner join Teacher on Teacher.tid = Course.tid and Teacher.tname = "张三")
-
-select Student.*, SC.score, SC.cid from SC
-inner join Student on Student.sid = SC.sid
+select @max_score := max(score) from SC
 inner join Course on Course.cid = SC.cid
 inner join Teacher on Teacher.tid = Course.tid
-where Teacher.tname = "张三" and SC.score = @max;
--- +------+--------+---------------------+------+-------+------+
--- | SId  | Sname  | Sage                | Ssex | score | cid  |
--- +------+--------+---------------------+------+-------+------+
--- | 01   | 赵雷   | 1990-01-01 00:00:00 | 男   |  90.0 | 02   |
--- +------+--------+---------------------+------+-------+------+
+where Teacher.tname = "张三";
+
+select Student.sid, Student.sname, Student.sage, Student.ssex, SC.cid from SC
+inner join Course on Course.cid = SC.cid
+inner join Teacher on Teacher.tid = Course.tid
+inner join Student on Student.sid = SC.sid
+where Teacher.tname = "张三" and SC.score = @max_score;
+-- +------+--------+---------------------+------+------+
+-- | sid  | sname  | sage                | ssex | cid  |
+-- +------+--------+---------------------+------+------+
+-- | 01   | 赵雷   | 1990-01-01 00:00:00 | 男   | 02   |
+-- +------+--------+---------------------+------+------+
 
 -- 35、查询不同课程成绩相同的学生的学生编号、课程编号、学生成绩
 select t1.sid, t1.cid, t1.score from sc as t1
@@ -243,8 +249,10 @@ group by sid having course >=2;
 
 -- 39、查询选修了全部课程的学生信息
 select @count :=count(1) from Course;
-select * from student
-where sid in (select sid from SC group by sid having count(cid) = @count);
+select st.sid, st.sname, st.sage from student st
+inner join(
+	select sid from SC group by sid having count(cid) = @count) t
+on t.sid = st.sid
 -- +------+--------+---------------------+------+
 -- | SId  | Sname  | Sage                | Ssex |
 -- +------+--------+---------------------+------+
@@ -253,7 +261,6 @@ where sid in (select sid from SC group by sid having count(cid) = @count);
 -- | 03   | 孙风   | 1990-05-20 00:00:00 | 男   |
 -- | 04   | 李云   | 1990-08-06 00:00:00 | 男   |
 -- +------+--------+---------------------+------+
--- 回答关于提高效率：https://www.jianshu.com/p/cf3fe3990d66 参考这篇提高效率的文章。
 
 -- 40.查询各学生的年龄，只按年份来算
 select *, (year(now())-year(sage)) as age  from Student
@@ -275,7 +282,9 @@ from student
 where substr(YEARWEEK(student.Sage),5,2)=substr(YEARWEEK(CURDATE()),5,2);
 
 -- 44.查询本月过生日的学生
-select * , month(sage), month(now()) from Student where month(sage)=month(now());
+select sid, sname, ssex, sage from Student where month(sage)=month(now());
+-- where后不要对列使用函数
+
 -- 或者使用 extract(unit from date)
 select * from Student where extract(month from student.sage) = extract(month from current_date());
 

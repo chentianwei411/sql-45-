@@ -68,17 +68,17 @@ group by St.sid, St.Sname having avg_score >= 60;
 -- 3.查询在 SC 表存在成绩的学生信息
 select Stu.sid from Student as Stu
 where sid in (select distinct sid from sc);
--- +------+
--- | sid  |
--- +------+
--- | 01   |
--- | 02   |
--- | 03   |
--- | 04   |
--- | 05   |
--- | 06   |
--- | 07   |
--- +------+
+-- 优化思路:
+-- 以后去重不要使用distinct,要使用row_number() over(partition by sid) as rank1 ,
+-- 然后取rank1=1,然后用join来和student 关联.
+-- 如果使用in 的时候，使用这样的方式
+-- in值列表限制在200以内。例如select… where userid in(….200个以内…)
+select stu.sid, stu.sname, stu.ssex, stu.sage
+from Student stu inner join (
+  select * from (
+    select sid, row_number() over(partition by sid) as rn from sc) t1
+  where rn = 1) t2
+on stu.sid = t2.sid
 
 -- 4.查询所有同学的学生编号、学生姓名、选课总数、所有课程的总成绩(没成绩的显示为 null )
 select Stu.sid, Stu.sname, count(sc.cid) as total_course, sum(sc.score) as total_score
@@ -89,6 +89,8 @@ group by Stu.sid, Stu.sname;
 select * from Student where sid in (select sid from sc);
 -- 使用exists，大数据下更高效
 select * from Student where exists(select 1 from sc where sc.sid = Student.sid);
+-- 优化思路
+-- exists 效果好于 in,但是在有索引的情况下，join 更好
 
 -- 5.查询「李」姓老师的数量
 select count(Tname) from Teacher where Tname like '李%';
@@ -115,22 +117,26 @@ having count(sc.cid) < (select count(1) from Course);
 -- | 赵六   |
 -- | 孙七   |
 -- +--------+
+-- 优化思路: having count()< a 这里先算出a的结果，
+-- 如果一个sql 占用太多资源时，可分步执行，这样每步执行完之后都能释放资源，其他同事也能更好利用资源
+select @count := count(1) from Course;
+select Student.sname from Student
+left join SC on SC.sid = Student.sid
+group by Student.sname
+having count(sc.cid) < @count
+
 
 -- 8.查询至少有一门课与学号为" 01 "的同学所学相同的同学的信息
-select distinct Student.sname from Student
-left join SC on SC.sid = Student.sid
+select * from Student
+inner join SC on SC.sid = Student.sid
 where SC.cid in(select cid from SC where sid = '01');
--- +--------+
--- | sname  |
--- +--------+
--- | 赵雷   |
--- | 钱电   |
--- | 孙风   |
--- | 李云   |
--- | 周梅   |
--- | 吴兰   |
--- | 郑竹   |
--- +--------+
+-- 优化：改用join，不使用in。
+select * from Student
+inner join (
+  select distinct s1.sid from SC as s1
+  inner join (select * from SC where sid = '01') as s2
+  on s1.cid = s2.cid) s
+on s.sid = Student.sid
 
 -- 9.查询和" 01 "号的同学学习的课程 完全相同的其他同学的信息
 -- 解题思路：
@@ -164,16 +170,25 @@ select Student.sid, Student.Sname from Student where sid not in (
   inner join Course on Course.cid = SC.cid
   inner join Teacher on Teacher.tid = Course.tid and Teacher.tname = "张三"
 );
--- +------+--------+
--- | sid  | Sname  |
--- +------+--------+
--- | 06   | 吴兰   |
--- | 09   | 张三   |
--- | 10   | 李四   |
--- | 11   | 李四   |
--- | 12   | 赵六   |
--- | 13   | 孙七   |
--- +------+--------+
+-- 优化，改用join,不用in:
+with zhangsan as (
+  select sid,score from SC
+  inner join Course on Course.cid = SC.cid
+  inner join Teacher on Teacher.tid = Course.tid and Teacher.tname = "张三"
+)
+select Student.sid, Student.Sname, zhangsan.score from Student
+left join zhangsan on zhangsan.sid = Student.sid
+where zhangsan.score is null;
+-- +------+--------+-------+
+-- | sid  | Sname  | score |   这里用到了is null，目的是为了筛选，不知道是否降低查询效率
+-- +------+--------+-------+   使用了show profiles:
+-- | 06   | 吴兰   |  NULL |    优化后：0.00058100
+-- | 09   | 张三   |  NULL |    优化前：0.00074600
+-- | 10   | 李四   |  NULL |    快了一些。
+-- | 11   | 李四   |  NULL |
+-- | 12   | 赵六   |  NULL |
+-- | 13   | 孙七   |  NULL |
+-- +------+--------+-------+
 
 -- 11.查询两门及其以上不及格课程的同学的学号，姓名及其平均成绩
 select Student.sid, Student.sname, avg(score) from Student
