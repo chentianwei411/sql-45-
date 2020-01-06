@@ -282,11 +282,18 @@ from student
 where substr(YEARWEEK(student.Sage),5,2)=substr(YEARWEEK(CURDATE()),5,2);
 
 -- 44.查询本月过生日的学生
-select sid, sname, ssex, sage from Student where month(sage)=month(now());
--- where后不要对列使用函数
+-- select sid, sname, ssex, sage from Student where month(sage)=month(now());
+-- where后不要对列使用函数,优化：
+select @month := month(now());
+select sid, sname, ssex, sage from Student where sage like concat("____-_",@month,"%");
 
--- 或者使用 extract(unit from date)
-select * from Student where extract(month from student.sage) = extract(month from current_date());
+-- 另外：mysql> select if(now()> "2019-1-11", "yes", 'no');
+-- +-------------------------------------+
+-- | if(now()> "2019-1-11", "yes", 'no') |
+-- +-------------------------------------+
+-- | yes                                 |
+-- +-------------------------------------+
 
 -- 45.查询下月过生日的学生
-select * from Student where  extract(month from student.sage) = extract(month from now()) + 1;
+select @month := month(now())+1;
+select sid, sname, ssex, sage from Student where sage like concat("____-0",@month,"%");
